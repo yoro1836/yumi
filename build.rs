@@ -1,6 +1,7 @@
-use std::process::Command;
+use std::process::{Command, Stdio};
 use std::env;
-use std::path::PathBuf;
+use std::fs;
+use std::path::{Path, PathBuf};
 
 /// 构建 yumi-ebpf BPF 程序，参照 frame-analyzer 的 build_ebpf()
 fn build_ebpf() -> Result<PathBuf, Box<dyn std::error::Error>> {
@@ -15,15 +16,8 @@ fn build_ebpf() -> Result<PathBuf, Box<dyn std::error::Error>> {
     println!("cargo:rerun-if-changed={}", ebpf_dir.join("Cargo.toml").display());
     println!("cargo:rerun-if-changed={}", ebpf_dir.join("src").display());
 
-    // 1. 安装 bpf-linker（参照 frame-analyzer install_ebpf_linker）
-    Command::new("cargo")
-        .args([
-            "install", "bpf-linker", "--force",
-            "--root", tools_dir.to_str().unwrap(),
-            "--target-dir", tools_dir.to_str().unwrap(),
-        ])
-        .env_remove("RUSTUP_TOOLCHAIN")
-        .status()?;
+    // 1. 确保 bpf-linker 可用（PATH 上已有则直接复用，否则下载官方预编译二进制）
+    ensure_bpf_linker(&tools_bin)?;
 
     // 2. 编译 BPF 程序（在 yumi-ebpf 目录中，避免 workspace 干扰）
     let mut ebpf_args = vec![
@@ -64,6 +58,56 @@ fn build_ebpf() -> Result<PathBuf, Box<dyn std::error::Error>> {
 fn add_path(add: &std::path::Path) -> Result<String, std::env::VarError> {
     let path = env::var("PATH")?;
     Ok(format!("{}:{}", add.display(), path))
+}
+
+/// 检查 PATH 上是否已存在可用的 bpf-linker
+fn bpf_linker_available() -> bool {
+    Command::new("bpf-linker")
+        .arg("--version")
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false)
+}
+
+/// bpf-linker 依赖特定版本的 LLVM，`cargo install` 在无 LLVM 的环境（如 CI）下无法编译。
+/// 这里直接下载官方发布的预编译静态二进制（已内嵌 LLVM），无需系统 LLVM。
+fn ensure_bpf_linker(tools_bin: &Path) -> Result<(), Box<dyn std::error::Error>> {
+    if bpf_linker_available() {
+        return Ok(());
+    }
+
+    fs::create_dir_all(tools_bin)?;
+    let host = env::var("HOST").unwrap_or_else(|_| "x86_64-unknown-linux-gnu".to_string());
+    let asset = if host.starts_with("aarch64-unknown-linux") {
+        "bpf-linker-aarch64-unknown-linux-musl.tar.zst"
+    } else {
+        "bpf-linker-x86_64-unknown-linux-musl.tar.zst"
+    };
+    let url = format!("https://github.com/aya-rs/bpf-linker/releases/latest/download/{asset}");
+    let tarball = tools_bin.join(asset);
+
+    let status = Command::new("curl")
+        .args(["-L", "-f", "-o", tarball.to_str().unwrap(), &url])
+        .status()?;
+    if !status.success() {
+        return Err(format!("下载 bpf-linker 失败: {url}").into());
+    }
+
+    let status = Command::new("tar")
+        .args(["-xpf", tarball.to_str().unwrap(), "-C", tools_bin.to_str().unwrap()])
+        .status()?;
+    if !status.success() {
+        return Err(format!("解压 bpf-linker 失败: {}", tarball.display()).into());
+    }
+
+    let _ = fs::remove_file(&tarball);
+
+    if !tools_bin.join("bpf-linker").exists() {
+        return Err("bpf-linker 安装后仍不可用".into());
+    }
+    Ok(())
 }
 
 fn main() {
