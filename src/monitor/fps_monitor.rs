@@ -39,10 +39,11 @@ use crate::monitor::app_detect;
 // ─── 常量 ────────────────────────────────────────────────
 
 /// uprobe 符号名（短签名）
-const SYMBOL_SHORT: &str = "_ZN7android7Surface11queueBufferEP19ANativeWindowBufferi";
+const SYMBOL_SHORT: &str =
+    "_ZN7android7Surface11queueBufferEONS_2spINS_13GraphicBufferEEEiPNS_24SurfaceQueueBufferOutputE";
 /// uprobe 符号名（长签名，fallback）
 const SYMBOL_LONG: &str =
-    "_ZN7android7Surface11queueBufferEP19ANativeWindowBufferiPNS_24SurfaceQueueBufferOutputE";
+    "_ZN7android7Surface11queueBufferERKNS_2spINS_13GraphicBufferEEERKNS1_INS_5FenceEEEPNS_24SurfaceQueueBufferOutputE";
 const LIBGUI_PATH: &str = "/system/lib64/libgui.so";
 
 /// RingBuf 输出的帧时间戳事件（与 yumi-ebpf 的 FrameTimestampEvent 内存布局一致）
