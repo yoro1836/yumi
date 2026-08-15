@@ -7,9 +7,3 @@ description = "eBPF probes for yumi — frame (uprobe) + CPU load (tracepoint)"
 
 [dependencies]
 aya-ebpf = "0.2.1"
-
-# 최신 bpf-linker(0.11.0)에 내장된 LLVM 23 은 -Oz/-Os 를 지원하지 않는다.
-# 루트 workspace 의 release opt-level="z" 를 그대로 상속받으면 -Oz 로 링크되어 실패하므로,
-# 이 크레이트만 opt-level 을 2 로 재정의한다.
-[profile.release]
-opt-level = 2
